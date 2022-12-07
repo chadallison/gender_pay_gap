@@ -1,0 +1,74 @@
+---
+title: "understand the gender pay gap three ways"
+author: "chad allison | 5 december 2022"
+output: github_document
+---
+
+following [this tutorial](https://juliasilge.com/blog/pay-gap-uk/) from Julia Silge
+
+___
+
+### loading libraries and setting preferences
+
+```{r message = F, warning = F}
+library(tidyverse)
+
+knitr::opts_chunk$set(message = F, warning = F, fig.align = "center")
+options(scipen = 999)
+theme_set(theme_minimal())
+```
+
+### loading data
+
+```{r}
+df_raw = read_csv(
+  "https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2022/2022-06-28/paygap.csv",
+  col_types = cols())
+
+head(df_raw)
+```
+
+### counting SIC codes
+
+```{r}
+df_raw |>
+  select(sic_codes) |>
+  separate_rows(sic_codes, sep = ":") |>
+  count(sic_codes, sort = T) |>
+  head(10)
+```
+
+### histogram of median difference in hourly pay
+
+```{r warning = F}
+df_raw |>
+  ggplot(aes(diff_median_hourly_percent / 100)) +
+  geom_histogram(bins = 25, fill = "springgreen4", alpha = 0.75) +
+  scale_x_continuous(limits = c(-0.5, 0.5)) +
+  labs(x = "percent difference in median hourly pay") +
+  annotate("text", x = -0.275, y = 5000,
+           label = "values greater than zero indicate\nmen making more than women")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
