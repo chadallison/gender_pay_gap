@@ -12,6 +12,9 @@ ___
 
 ```{r message = F, warning = F}
 library(tidyverse)
+library(tidytext)
+library(dotwhisker)
+library(rsample)
 
 knitr::opts_chunk$set(message = F, warning = F, fig.align = "center")
 options(scipen = 999)
@@ -40,7 +43,7 @@ df_raw |>
 
 ### histogram of median difference in hourly pay
 
-```{r warning = F}
+```{r message = F, warning = F}
 df_raw |>
   ggplot(aes(diff_median_hourly_percent / 100)) +
   geom_histogram(bins = 25, fill = "springgreen4", alpha = 0.75) +
@@ -50,9 +53,110 @@ df_raw |>
            label = "values greater than zero indicate\nmen making more than women")
 ```
 
+### getting more information on the SIC codes
 
+a .csv file of information on the SIC codes can be downloaded at this link: https://www.gov.uk/government/publications/standard-industrial-classification-of-economic-activities-sic
 
+```{r}
+sic_codes = read_csv("sic_codes.csv", col_types = cols()) |>
+  janitor::clean_names()
 
+sic_codes
+```
+
+### joining SIC codes with original data
+
+```{r}
+df_joined = df_raw |>
+  select(employer_name, diff_median_hourly_percent, sic_codes) |>
+  separate_rows(sic_codes, sep = ":") |>
+  left_join(sic_codes, by = c("sic_codes" = "sic_code"))
+
+df_joined
+```
+
+### tokenizing the code descriptions
+
+```{r}
+df_token = df_joined |>
+  unnest_tokens(word, description) |>
+  anti_join(get_stopwords(), by = "word") |>
+  na.omit()
+
+df_token
+```
+
+### filtering to most common words and re-formatting `diff_median_hourly_percent`
+
+```{r}
+top_words = df_token |>
+  count(word) |>
+  filter(!word %in% c("activities", "n.e.c", "general", "non")) |>
+  slice_max(n, n = 40) |>
+  pull(word)
+
+df = df_token |>
+  filter(word %in% top_words) |>
+  transmute(diff_wage = diff_median_hourly_percent / 100, word)
+
+df
+```
+
+### visual showing increase in men's hourly wages compared to women's for the words in our data
+
+```{r}
+df |>
+  group_by(word) |>
+  summarise(diff_wage = mean(diff_wage)) |>
+  mutate(word = fct_reorder(word, diff_wage)) |>
+  ggplot(aes(diff_wage, word)) +
+  geom_point(alpha = 0.9, size = 2, col = "#B165C7") +
+  labs(x = "percent increase in men's hourly wages compared to women's",
+       y = NULL)
+```
+
+### fitting a linear model
+
+```{r}
+paygap_fit = lm(diff_wage ~ word, data = df)
+summary(paygap_fit)
+```
+
+### visualising model results using `dotwhisker` package
+
+```{r}
+tidy(paygap_fit) |>
+  mutate(term = str_remove(term, "word"),
+         term = fct_reorder(term, -estimate)) %>% # this has to be %>% not |>
+  dwplot(vars_order = levels(.$term),
+         dot_args = list(size = 2, col = "#598DC8"),
+         whisker_args = list(col = "#598DC8")) +
+  scale_x_continuous(labels = scales::percent) +
+  labs(x = "percent increase in men's hourly wages compared to women's",
+       y = NULL)
+```
+
+### fitting many models
+
+```{r}
+paygap_intervals = reg_intervals(diff_wage ~ word, data = df)
+
+paygap_intervals
+```
+
+### visualising modeling results
+
+```{r}
+paygap_intervals |>
+  mutate(term = str_remove(term, "word"),
+         term = fct_reorder(term, .estimate)) |>
+  ggplot(aes(.estimate, term)) +
+  geom_crossbar(aes(xmin = .lower, xmax = .upper),
+                col = "#6C9E72", alpha = 0.75) +
+  scale_x_continuous(labels = scales::percent) +
+  labs(x = "percent increase in men's hourly wages compared to women's",
+       y = NULL)
+```
 
 
 
